@@ -5,14 +5,12 @@ import {
 } from '../deps/ws.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 
-let emitter = new EE();
-
-let pipeNewConnection = ({ connId, localPort, commSock }) => {
+let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
   let cleanup = ({ err } = {}) => {
     if (err) console.error(err);
-    emitter.removeAllListeners(`CONN_DATA:${connId}`);
-    emitter.removeAllListeners(`CONN_CLOSE:${connId}`);
-    commSock.send(encode(null, { headers: { connClose: true, connId } }));
+    commEE.removeAllListeners(`CONN_DATA:${connId}`);
+    commEE.removeAllListeners(`CONN_CLOSE:${connId}`);
+    commSock.send(encode(null, { headers: { connClose: true, connId } })).catch(e => e);
     try { localConn?.close?.(); } catch {}
   };
   let connDataHandler = bodyArr => {
@@ -23,8 +21,8 @@ let pipeNewConnection = ({ connId, localPort, commSock }) => {
 
   (async () => {
     localConn = await tcpConnect({ port: localPort });
-    emitter.on(`CONN_DATA:${connId}`, connDataHandler);
-    emitter.on(`CONN_CLOSE:${connId}`, connCloseHandler);
+    commEE.on(`CONN_DATA:${connId}`, connDataHandler);
+    commEE.on(`CONN_CLOSE:${connId}`, connCloseHandler);
 
     await commSock.send(encode(null, { headers: { connReady: true, connId } }));
     for await (let packet of localIter(localConn)) {
@@ -39,6 +37,7 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
 
   await commSock.send(encode(null, { headers: { commConnInit: true, publicPort } }));
 
+  let commEE = new EE();
   let { onSockEv } = commKeepAlive(commSock);
   for await (let ev of commSock) {
     onSockEv(ev);
@@ -49,21 +48,21 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInitDone) {
-        console.log(`forwarding localhost:${localPort} -> :${headers.publicPort}`);
+        console.log(`forwarding localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
       }
       if (headers.commConnInitFailed) {
-        console.error(`forward failed localhost:${localPort} -> :${headers.publicPort}`);
+        console.error(`forward failed localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
         throw Error(headers.errMsg);
       }
       if (headers.newConn) {
         let { connId } = headers;
-        pipeNewConnection({ connId, localPort, commSock });
+        pipeNewConnection({ connId, localPort, commSock, commEE });
       }
       if (headers.connData) {
-        emitter.emit(`CONN_DATA:${headers.connId}`, bodyArr);
+        commEE.emit(`CONN_DATA:${headers.connId}`, bodyArr);
       }
       if (headers.connClose) {
-        emitter.emit(`CONN_CLOSE:${headers.connId}`);
+        commEE.emit(`CONN_CLOSE:${headers.connId}`);
       }
     }
   }

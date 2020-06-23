@@ -9,7 +9,6 @@ import {
 import getFreePort, { isFreePort } from './getFreePort.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 
-let emitter = new EE();
 let commPort = parseInt(Deno.args[0]) || 8080;
 
 // let commServer = Deno.listen({ port: commPort });
@@ -17,15 +16,15 @@ let bindAddr = `0.0.0.0:${commPort}`;
 let commServer = serve(bindAddr);
 console.log(`commServer listening on ${bindAddr}`);
 
-let startPipeServer = async ({ publicPort, commSock }) => {
+let startPipeServer = async ({ publicPort, commSock, commEE }) => {
   let onConnection = localConn => {
     let connId = nanoid();
 
     let connCleanup = ({ err } = {}) => {
       if (err) console.error(err);
-      emitter.removeAllListeners(`CONN_DATA:${connId}`);
-      emitter.removeAllListeners(`CONN_CLOSE:${connId}`);
-      commSock.send(encode(null, { headers: { connClose: true, connId } }));
+      commEE.removeAllListeners(`CONN_DATA:${connId}`);
+      commEE.removeAllListeners(`CONN_CLOSE:${connId}`);
+      commSock.send(encode(null, { headers: { connClose: true, connId } })).catch(e => e);
       try { localConn.close(); } catch {}
     };
 
@@ -36,9 +35,9 @@ let startPipeServer = async ({ publicPort, commSock }) => {
 
     (async () => {
       await commSock.send(encode(null, { headers: { newConn: true, connId } }));
-      await pEvent(emitter, `CONN_READY:${connId}`, { timeout: 3*1000 });
-      emitter.on(`CONN_DATA:${connId}`, connDataHandler);
-      emitter.once(`CONN_CLOSE:${connId}`, connCloseHandler);
+      await pEvent(commEE, `CONN_READY:${connId}`, { timeout: 3*1000 });
+      commEE.on(`CONN_DATA:${connId}`, connDataHandler);
+      commEE.once(`CONN_CLOSE:${connId}`, connCloseHandler);
 
       for await (let packet of localIter(localConn)) {
         await commSock.send(encode(packet, { headers: { connData: true, connId } }));
@@ -75,6 +74,7 @@ let handleWs = async commSock => {
   let cleanup = () => {
     try { pipeServer?.close?.(); } catch {}
   };
+  let commEE = new EE();
   let pipeServer;
   let { onSockEv } = commKeepAlive(commSock, cleanup);
   for await (let ev of commSock) {
@@ -87,16 +87,16 @@ let handleWs = async commSock => {
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInit) {
         let { publicPort } = headers;
-        pipeServer = await startPipeServer({ publicPort, commSock });
+        pipeServer = await startPipeServer({ publicPort, commSock, commEE });
       }
       if (headers.connReady) {
-        emitter.emit(`CONN_READY:${headers.connId}`);
+        commEE.emit(`CONN_READY:${headers.connId}`);
       }
       if (headers.connData) {
-        emitter.emit(`CONN_DATA:${headers.connId}`, bodyArr);
+        commEE.emit(`CONN_DATA:${headers.connId}`, bodyArr);
       }
       if (headers.connClose) {
-        emitter.emit(`CONN_CLOSE:${headers.connId}`);
+        commEE.emit(`CONN_CLOSE:${headers.connId}`);
       }
     }
   }
