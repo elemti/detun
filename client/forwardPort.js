@@ -5,6 +5,7 @@ import {
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
 } from '../deps/ws.js';
+import commKeepAlive from '../common/commKeepAlive.js';
 
 let emitter = new EE();
 let COMM_PORT = 8000;
@@ -43,19 +44,26 @@ export default async (localPort, publicPort) => {
 
   await commSock.send(encode(null, { headers: { commConnInit: true, publicPort } }));
 
+  let { onSockEv } = commKeepAlive(commSock);
   for await (let ev of commSock) {
+    onSockEv(ev);
+
     if (typeof ev === 'string') {
       // text message
       console.log("ws:Text", ev);
     }
     
     if (ev instanceof Uint8Array) {
-      // console.log(decode(ev));
-      console.log(decode(ev).headers);
+      // console.dir(decode(ev));
+      console.dir(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInitDone) {
         console.log(`forwarding localhost:${localPort} -> :${headers.publicPort}`);
+      }
+      if (headers.commConnInitFailed) {
+        console.error(`forward failed localhost:${localPort} -> :${headers.publicPort}`);
+        throw Error(headers.errMsg);
       }
       if (headers.newConn) {
         let { connId } = headers;
@@ -67,18 +75,6 @@ export default async (localPort, publicPort) => {
       if (headers.connClose) {
         emitter.emit(`CONN_CLOSE:${headers.connId}`);
       }
-    }
-
-    if (isWebSocketPingEvent(ev)) {
-      let [, body] = ev;
-      // ping
-      console.log("ws:Ping", body);
-    }
-    
-    if (isWebSocketCloseEvent(ev)) {
-      // close
-      let { code, reason } = ev;
-      console.log("ws:Close", code, reason);
     }
   }
 };

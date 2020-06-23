@@ -63,3 +63,6 @@ export let skipBadResourceErr = err => {
   if (err?.name?.trim?.() === 'BadResource' && err?.message?.trim?.() === 'Bad resource ID') return;
   throw err;
 };
+
+export let PING_INTERV = 5 * 1000;
+export let PING_TIMEOUT = 15 * 1000;

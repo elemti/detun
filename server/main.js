@@ -5,10 +5,9 @@ import { encode, decode, localIter, skipBadResourceErr } from '../common/main.js
 import pEvent from '../deps/p-events.js';
 import {
   acceptWebSocket,
-  isWebSocketCloseEvent,
-  isWebSocketPingEvent,
 } from '../deps/ws.js';
-import getFreePort from './getFreePort.js';
+import getFreePort, { isFreePort } from './getFreePort.js';
+import commKeepAlive from '../common/commKeepAlive.js';
 
 let emitter = new EE();
 let COMM_PORT = 8000;
@@ -45,36 +44,56 @@ let startPipeServer = async ({ publicPort, commSock }) => {
       }
     })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
   };
+  
+  try {
+    if (publicPort) {
+      let isFree = await isFreePort(publicPort);
+      if (!isFree) throw Error(`SELECTED_PORT_IS_BUSY: ${publicPort}`);
+    } else {
+      publicPort = await getFreePort();
+    }
+  } catch (err) {
+    await commSock.send(encode(null, { headers: { commConnInitFailed: true, publicPort, errMsg: err.message } }));
+    return;
+  }
 
   let pipeServer = Deno.listen({ port: publicPort });
   console.log('pipeServer created at port ' + publicPort);
-  await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
+  
+  (async () => {
+    await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
+    for await (let localConn of pipeServer) {
+      onConnection(localConn);
+    }
+  })().catch(console.error);
 
-  for await (let localConn of pipeServer) {
-    onConnection(localConn);
-  }
+  return pipeServer;
 };
 
 let handleWs = async commSock => {
   console.log('client connected');
 
+  let cleanup = () => {
+    try { pipeServer?.close?.(); } catch {}
+  };
+  let pipeServer;
+  let { onSockEv } = commKeepAlive(commSock, cleanup);
   for await (let ev of commSock) {
+    onSockEv(ev);
+
     if (typeof ev === 'string') {
       // text message
-      console.log("ws:Text", ev);
+      console.dir("ws:Text", ev);
     }
     
     if (ev instanceof Uint8Array) {
-      // console.log(decode(ev));
-      console.log(decode(ev).headers);
+      // console.dir(decode(ev));
+      console.dir(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInit) {
         let { publicPort } = headers;
-        if (!publicPort) {
-          publicPort = await getFreePort();
-        }
-        startPipeServer({ publicPort, commSock }).catch(console.error);
+        pipeServer = await startPipeServer({ publicPort, commSock });
       }
       if (headers.connReady) {
         emitter.emit(`CONN_READY:${headers.connId}`);
@@ -86,18 +105,6 @@ let handleWs = async commSock => {
         emitter.emit(`CONN_CLOSE:${headers.connId}`);
       }
     }
-
-    if (isWebSocketPingEvent(ev)) {
-      let [, body] = ev;
-      // ping
-      console.log("ws:Ping", body);
-    }
-    
-    if (isWebSocketCloseEvent(ev)) {
-      // close
-      let { code, reason } = ev;
-      console.log("ws:Close", code, reason);
-    }
   }
 };
 
@@ -108,9 +115,9 @@ let handleReq = req => {
     commSock = await acceptWebSocket({ conn, bufReader, bufWriter, headers });
     await handleWs(commSock);
   })().catch(err => {
-    console.error(`failed to accept websocket: ${err}`);
-    req.respond({ status: 400 });
-    commSock?.close?.(1000);
+    console.error(err);
+    try { req.respond({ status: 400 }); } catch {}
+    try { commSock.close(1000); } catch {}
   });
 };
 
