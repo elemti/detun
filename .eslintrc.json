@@ -3,7 +3,7 @@
         "browser": true,
         "es6": true
     },
-    "extends": "eslint:recommended",
+    "extends": ["eslint:recommended", "plugin:import/warnings"],
     "globals": {
         "Atomics": "readonly",
         "Deno": "readonly",
@@ -16,6 +16,8 @@
     },
     "rules": {
         "no-unused-vars": "warn",
-        "no-empty": "off"
+        "import/extensions": ["warn", "ignorePackages"],
+        "no-empty": "off",
+        "no-constant-condition": "off"
     }
 }

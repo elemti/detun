@@ -8,6 +8,7 @@ import {
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
 } from '../deps/ws.js';
+import getFreePort from './getFreePort.js';
 
 let emitter = new EE();
 let COMM_PORT = 8000;
@@ -17,9 +18,6 @@ let commServer = serve(`:${COMM_PORT}`);
 console.log(`commServer listening on port ${COMM_PORT}`);
 
 let startPipeServer = async ({ publicPort, commSock }) => {
-  let pipeServer = Deno.listen({ port: publicPort });
-  console.log('pipeServer created at port ' + publicPort);
-
   let onConnection = localConn => {
     let connId = nanoid();
 
@@ -52,6 +50,10 @@ let startPipeServer = async ({ publicPort, commSock }) => {
     })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
   };
 
+  let pipeServer = Deno.listen({ port: publicPort });
+  console.log('pipeServer created at port ' + publicPort);
+  await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
+
   for await (let localConn of pipeServer) {
     onConnection(localConn);
   }
@@ -74,7 +76,7 @@ let handleWs = async commSock => {
       if (headers.commConnInit) {
         let { publicPort } = headers;
         if (!publicPort) {
-          // todo: get free port
+          publicPort = await getFreePort();
         }
         startPipeServer({ publicPort, commSock }).catch(console.error);
       }

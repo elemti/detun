@@ -54,6 +54,9 @@ export default async (localPort, publicPort) => {
       console.log(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
+      if (headers.commConnInitDone) {
+        console.log(`forwarding localhost:${localPort} -> :${headers.publicPort}`);
+      }
       if (headers.newConn) {
         let { connId } = headers;
         pipeNewConnection({ connId, localPort, commSock });
