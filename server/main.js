@@ -10,11 +10,12 @@ import getFreePort, { isFreePort } from './getFreePort.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 
 let emitter = new EE();
-let COMM_PORT = 8000;
+let commPort = parseInt(Deno.args[0]) || 8080;
 
-// let commServer = Deno.listen({ port: COMM_PORT });
-let commServer = serve(`:${COMM_PORT}`);
-console.log(`commServer listening on port ${COMM_PORT}`);
+// let commServer = Deno.listen({ port: commPort });
+let bindAddr = `0.0.0.0:${commPort}`;
+let commServer = serve(bindAddr);
+console.log(`commServer listening on ${bindAddr}`);
 
 let startPipeServer = async ({ publicPort, commSock }) => {
   let onConnection = localConn => {
@@ -71,8 +72,6 @@ let startPipeServer = async ({ publicPort, commSock }) => {
 };
 
 let handleWs = async commSock => {
-  console.log('client connected');
-
   let cleanup = () => {
     try { pipeServer?.close?.(); } catch {}
   };
@@ -80,11 +79,6 @@ let handleWs = async commSock => {
   let { onSockEv } = commKeepAlive(commSock, cleanup);
   for await (let ev of commSock) {
     onSockEv(ev);
-
-    if (typeof ev === 'string') {
-      // text message
-      console.dir("ws:Text", ev);
-    }
     
     if (ev instanceof Uint8Array) {
       // console.dir(decode(ev));

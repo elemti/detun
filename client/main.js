@@ -12,8 +12,15 @@ import { parse } from '../deps/flags.js';
 //   }
 // };
 
+let validatePorts = ({ ...ports }) => {
+  Object.entries(ports).forEach(([key, val]) => {
+    if (isNaN(val)) throw Error(`invalid ${key}: ${val}`);
+  });
+};
+
 (async () => {
-  console.dir(parse(Deno.args));
-  // forwardRetryLoop(3000, 9000);
-  await forwardPort(3000, 9000);
+  let { localPort, publicPort, commPort, hostname } = parse(Deno.args);
+  validatePorts({ localPort, publicPort });
+
+  await forwardPort({ localPort, publicPort, commPort, hostname });
 })();

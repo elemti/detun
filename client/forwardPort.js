@@ -2,13 +2,10 @@ import { encode, decode, localIter, tcpConnect, skipBadResourceErr } from '../co
 import EE from '../deps/events.js';
 import {
   connectWebSocket,
-  isWebSocketCloseEvent,
-  isWebSocketPingEvent,
 } from '../deps/ws.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 
 let emitter = new EE();
-let COMM_PORT = 8000;
 
 let pipeNewConnection = ({ connId, localPort, commSock }) => {
   let cleanup = ({ err } = {}) => {
@@ -36,10 +33,8 @@ let pipeNewConnection = ({ connId, localPort, commSock }) => {
   })().catch(skipBadResourceErr).catch(console.error).finally(cleanup);
 };
 
-export default async (localPort, publicPort) => {
-  if (isNaN(localPort)) throw Error('invalid localPort: ' + localPort);
-  
-  let commSock = await connectWebSocket(`ws://127.0.0.1:${COMM_PORT}`);
+export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elemti.com' }) => {
+  let commSock = await connectWebSocket(`ws://${hostname}:${commPort}`);
   console.log('connected to commServer');
 
   await commSock.send(encode(null, { headers: { commConnInit: true, publicPort } }));
@@ -47,11 +42,6 @@ export default async (localPort, publicPort) => {
   let { onSockEv } = commKeepAlive(commSock);
   for await (let ev of commSock) {
     onSockEv(ev);
-
-    if (typeof ev === 'string') {
-      // text message
-      console.log("ws:Text", ev);
-    }
     
     if (ev instanceof Uint8Array) {
       // console.dir(decode(ev));
