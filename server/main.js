@@ -103,19 +103,21 @@ let handleWs = async commSock => {
   }
 };
 
+let handleReq = req => {
+  let { conn, r: bufReader, w: bufWriter, headers } = req;
+  let commSock;
+  (async () => {
+    commSock = await acceptWebSocket({ conn, bufReader, bufWriter, headers });
+    await handleWs(commSock);
+  })().catch(err => {
+    console.error(`failed to accept websocket: ${err}`);
+    req.respond({ status: 400 });
+    commSock?.close?.(1000);
+  });
+};
+
 (async () => {
   for await (let req of commServer) {
-    let { conn, r: bufReader, w: bufWriter, headers } = req;
-    (async () => {
-      let commSock;
-      try {
-        commSock = await acceptWebSocket({ conn, bufReader, bufWriter, headers });
-        await handleWs(commSock);
-      } catch (err) {
-        console.error(`failed to accept websocket: ${err}`);
-        commSock?.close?.(1000);
-        req.respond({ status: 400 });
-      }
-    })();
+    handleReq(req);
   }
 })();
