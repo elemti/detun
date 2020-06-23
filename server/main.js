@@ -23,16 +23,14 @@ let startPipeServer = async ({ publicPort, commSock }) => {
 
     let connCleanup = ({ err } = {}) => {
       if (err) console.error(err);
-      emitter.off(`CONN_DATA:${connId}`, connDataHandler);
-      emitter.off(`CONN_CLOSE:${connId}`, connCloseHandler);
+      emitter.removeAllListeners(`CONN_DATA:${connId}`);
+      emitter.removeAllListeners(`CONN_CLOSE:${connId}`);
       commSock.send(encode(null, { headers: { connClose: true, connId } }));
       try { localConn.close(); } catch {}
     };
 
     let connDataHandler = bodyArr => {
-      localConn
-        .write(bodyArr)
-        .catch(err => connCleanup({ err }));
+      localConn.write(bodyArr).catch(err => connCleanup({ err }));
     };
     let connCloseHandler = () => connCleanup();
 
@@ -43,9 +41,7 @@ let startPipeServer = async ({ publicPort, commSock }) => {
       emitter.once(`CONN_CLOSE:${connId}`, connCloseHandler);
 
       for await (let packet of localIter(localConn)) {
-        await commSock
-          .send(encode(packet, { headers: { connData: true, connId } }))
-          .catch(err => connCleanup({ err }));
+        await commSock.send(encode(packet, { headers: { connData: true, connId } }));
       }
     })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
   };

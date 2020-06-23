@@ -12,8 +12,8 @@ let COMM_PORT = 8000;
 let pipeNewConnection = ({ connId, localPort, commSock }) => {
   let cleanup = ({ err } = {}) => {
     if (err) console.error(err);
-    emitter.off(`CONN_DATA:${connId}`, connDataHandler);
-    emitter.off(`CONN_CLOSE:${connId}`, connCloseHandler);
+    emitter.removeAllListeners(`CONN_DATA:${connId}`);
+    emitter.removeAllListeners(`CONN_CLOSE:${connId}`);
     commSock.send(encode(null, { headers: { connClose: true, connId } }));
     try { localConn?.close?.(); } catch {}
   };
