@@ -1,36 +1,34 @@
 import { encode, decode, localIter, tcpConnect, skipBadResourceErr, tryCatch } from '../common/main.js';
-import EE from '../deps/events.js';
 import {
   connectWebSocket,
 } from '../deps/ws.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 
-let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
+let pipeNewConnection = ({ connId, localPort, commSock, onCleanup }) => {
   let connCleanup = ({ err } = {}) => {
     if (err) console.error(err);
-    commEE.off(`CONN_DATA:${connId}`, connDataHandler);
-    commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
+    onCleanup?.();
     tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
     tryCatch(() => localConn?.close?.());
   };
-  let connDataHandler = bodyArr => {
-    Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
+  let onData = async bodyArr => {
+    await Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
   };
-  let connCloseHandler = () => {
-    connCleanup();
+  let onClose = async () => {
+    await connCleanup();
   };
   let localConn;
 
   (async () => {
     localConn = await tcpConnect({ port: localPort });
-    commEE.on(`CONN_DATA:${connId}`, connDataHandler);
-    commEE.on(`CONN_CLOSE:${connId}`, connCloseHandler);
 
     await commSock.send(encode(null, { headers: { connReady: true, connId } }));
     for await (let packet of localIter(localConn)) {
       await commSock.send(encode(packet, { headers: { connData: true, connId } }));
     }
   })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
+
+  return { onData, onClose };
 };
 
 export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elemti.com' }) => {
@@ -39,7 +37,7 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
 
   await commSock.send(encode(null, { headers: { commConnInit: true, publicPort } }));
 
-  let commEE = new EE();
+  let connections = {};
   let { onSockEv } = commKeepAlive(commSock);
   for await (let ev of commSock) {
     onSockEv(ev);
@@ -53,19 +51,19 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
         console.log(`forwarding localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
       }
       if (headers.commConnInitFailed) {
-        console.error(`forward failed localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
         console.error(`remote host error: ${headers.errMsg}`);
         throw Error('COMM_CONN_INIT_FAILED');
       }
       if (headers.newConn) {
         let { connId } = headers;
-        pipeNewConnection({ connId, localPort, commSock, commEE });
+        let onCleanup = () => { delete connections[connId] };
+        connections[connId] = pipeNewConnection({ connId, localPort, commSock, onCleanup });
       }
       if (headers.connData) {
-        commEE.emit(`CONN_DATA:${headers.connId}`, bodyArr);
+        await connections[headers.connId]?.onData(bodyArr).catch(console.error);
       }
       if (headers.connClose) {
-        commEE.emit(`CONN_CLOSE:${headers.connId}`);
+        await connections[headers.connId]?.onClose().catch(console.error);
       }
     }
   }

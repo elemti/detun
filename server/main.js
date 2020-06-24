@@ -1,13 +1,13 @@
 import { serve } from '../deps/http.js';
 import { nanoid } from '../deps/nanoid.js';
-import EE from '../deps/events.js';
 import { encode, decode, localIter, skipBadResourceErr, tryCatch } from '../common/main.js';
-import pEvent from '../deps/p-events.js';
 import {
   acceptWebSocket,
 } from '../deps/ws.js';
 import getFreePort, { isFreePort } from './getFreePort.js';
 import commKeepAlive from '../common/commKeepAlive.js';
+import pEvent from '../deps/p-event.js';
+import EE from '../deps/events.js';
 
 let commPort = parseInt(Deno.args[0]) || 8080;
 
@@ -16,71 +16,58 @@ let bindAddr = `0.0.0.0:${commPort}`;
 let commServer = serve(bindAddr);
 console.log(`commServer listening on ${bindAddr}`);
 
-let startPipeServer = async ({ publicPort, commSock, commEE }) => {
-  let commClosed = false;
-  let pipeServerCleanup = ({ err } = {}) => {
-    commClosed = true;
+let onConnection = ({ localConn, commSock, onCleanup, connId }) => {
+  let connEE = new EE();
+  let connCleanup = ({ err } = {}) => {
     if (err) console.error(err);
-    try { pipeServer?.close?.(); } catch {}
+    onCleanup?.();
+    connEE.removeAllListeners();
+    tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
+    tryCatch(() => localConn.close());
   };
-  let onConnection = localConn => {
-    let connId = nanoid();
 
-    let connCleanup = ({ err } = {}) => {
-      if (err) console.error(err);
-      commEE.off(`CONN_DATA:${connId}`, connDataHandler);
-      commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
-      tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
-      tryCatch(() => localConn.close());
-    };
-
-    let connDataHandler = bodyArr => {
-      Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
-    };
-    let connCloseHandler = () => {
-      connCleanup();
-    };
-
-    (async () => {
-      await commSock.send(encode(null, { headers: { newConn: true, connId } }));
-      await pEvent(commEE, `CONN_READY:${connId}`, { timeout: 3*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
-      commEE.on(`CONN_DATA:${connId}`, connDataHandler);
-      commEE.on(`CONN_CLOSE:${connId}`, connCloseHandler);
-
-      for await (let packet of localIter(localConn)) {
-        await commSock.send(encode(packet, { headers: { connData: true, connId } }));
-      }
-    })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
+  let onData = async bodyArr => {
+    await Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
   };
-  
-  commEE.once('COMM_CONN_CLOSE', () => pipeServerCleanup());
-  let pipeServer;
-  try {
-    if (publicPort) {
-      let isFree = await isFreePort(publicPort);
-      if (!isFree) throw Error(`SELECTED_PORT_IS_BUSY: ${publicPort}`);
-    } else {
-      publicPort = await getFreePort();
-    }
-    if (commClosed) return;
-    pipeServer = Deno.listen({ port: publicPort });
-    console.log('pipeServer created at port ' + publicPort);
-  } catch (err) {
-    await commSock.send(encode(null, { headers: { commConnInitFailed: true, publicPort, errMsg: err.message } }));
-    return;
-  }
-  
+  let onClose = async () => {
+    await connCleanup();
+  };
+  let onReady = async () => {
+    connEE.emit('CONN_READY');
+  };
+
   (async () => {
-    await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
-    for await (let localConn of pipeServer) {
-      onConnection(localConn);
+    await commSock.send(encode(null, { headers: { newConn: true, connId } }));
+    await pEvent(connEE, 'CONN_READY', { timeout: 3*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
+
+    for await (let packet of localIter(localConn)) {
+      await commSock.send(encode(packet, { headers: { connData: true, connId } }));
     }
-  })().catch(console.error);
+  })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
+
+  return { onData, onClose, onReady };
+};
+
+let startPipeServer = async ({ publicPort }) => {
+  if (publicPort) {
+    let isFree = await isFreePort(publicPort);
+    if (!isFree) throw Error(`SELECTED_PORT_IS_BUSY: ${publicPort}`);
+  } else {
+    publicPort = await getFreePort();
+  }
+  let pipeServer = Deno.listen({ port: publicPort });
+  console.log('pipeServer created at port ' + publicPort);
+  return pipeServer;
 };
 
 let handleWs = async commSock => {
-  let commEE = new EE();
-  let { onSockEv } = commKeepAlive(commSock, () => commEE.emit(`COMM_CONN_CLOSE`));
+  let { onSockEv } = commKeepAlive(commSock, () => pipeServerCleanup());
+  let pipeServerCleanup = ({ err } = {}) => {
+    if (err) console.error(err);
+    tryCatch(() => pipeServer?.close?.());
+  };
+  let pipeServer;
+  let connections = {};
   for await (let ev of commSock) {
     onSockEv(ev);
     
@@ -91,16 +78,30 @@ let handleWs = async commSock => {
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInit) {
         let { publicPort } = headers;
-        startPipeServer({ publicPort, commSock, commEE }).catch(console.error);
+        try {
+          pipeServer = await startPipeServer({ publicPort });
+        } catch (err) {
+          await commSock.send(encode(null, { headers: { commConnInitFailed: true, errMsg: err.message } }));
+          await commSock.close();
+          return;
+        }
+        (async () => {
+          await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
+          for await (let localConn of pipeServer) {
+            let connId = nanoid();
+            let onCleanup = () => { delete connections[connId] };
+            connections[connId] = onConnection({ connId, localConn, commSock, onCleanup });
+          }
+        })().catch(console.error);
       }
       if (headers.connReady) {
-        commEE.emit(`CONN_READY:${headers.connId}`);
+        await connections[headers.connId]?.onReady().catch(console.error);
       }
       if (headers.connData) {
-        commEE.emit(`CONN_DATA:${headers.connId}`, bodyArr);
+        await connections[headers.connId]?.onData(bodyArr).catch(console.error);
       }
       if (headers.connClose) {
-        commEE.emit(`CONN_CLOSE:${headers.connId}`);
+        await connections[headers.connId]?.onClose().catch(console.error);
       }
     }
   }
