@@ -26,20 +26,20 @@ let startPipeServer = async ({ publicPort, commSock, commEE }) => {
   let onConnection = localConn => {
     let connId = nanoid();
 
-    let connCleanup = ({ err, dontSendCloseSignal } = {}) => {
+    let connCleanup = ({ err } = {}) => {
       if (err) console.error(err);
       commEE.off(`CONN_DATA:${connId}`, connDataHandler);
       commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
-      if (!dontSendCloseSignal) {
-        tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
-      }
+      tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
       tryCatch(() => localConn.close());
     };
 
     let connDataHandler = bodyArr => {
       localConn.write(bodyArr).catch(err => connCleanup({ err }));
     };
-    let connCloseHandler = () => connCleanup({ dontSendCloseSignal: true });
+    let connCloseHandler = () => {
+      connCleanup();
+    };
 
     (async () => {
       await commSock.send(encode(null, { headers: { newConn: true, connId } }));
@@ -85,8 +85,8 @@ let handleWs = async commSock => {
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      // console.dir(decode(ev));
-      console.dir(decode(ev).headers);
+      // console.log(decode(ev));
+      console.log(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInit) {

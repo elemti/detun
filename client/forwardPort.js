@@ -6,19 +6,19 @@ import {
 import commKeepAlive from '../common/commKeepAlive.js';
 
 let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
-  let cleanup = ({ err, dontSendCloseSignal } = {}) => {
+  let cleanup = ({ err } = {}) => {
     if (err) console.error(err);
     commEE.off(`CONN_DATA:${connId}`, connDataHandler);
     commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
-    if (!dontSendCloseSignal) {
-      tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
-    }
+    tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
     tryCatch(() => localConn?.close?.());
   };
   let connDataHandler = bodyArr => {
     localConn.write(bodyArr).catch(err => cleanup({ err }));
   };
-  let connCloseHandler = () => cleanup({ dontSendCloseSignal: true });
+  let connCloseHandler = () => {
+    cleanup();
+  };
   let localConn;
 
   (async () => {
@@ -45,8 +45,8 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      // console.dir(decode(ev));
-      console.dir(decode(ev).headers);
+      // console.log(decode(ev));
+      console.log(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInitDone) {
