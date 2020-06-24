@@ -66,3 +66,13 @@ export let skipBadResourceErr = err => {
 
 export let PING_INTERV = 5 * 1000;
 export let PING_TIMEOUT = 15 * 1000;
+
+export let tryCatch = func => {
+  try {
+    let res = func();
+    if (res instanceof Promise) {
+      return res.catch(e => e);
+    }
+    return res;
+  } catch {}
+};

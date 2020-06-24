@@ -1,4 +1,4 @@
-import { encode, decode, localIter, tcpConnect, skipBadResourceErr } from '../common/main.js';
+import { encode, decode, localIter, tcpConnect, skipBadResourceErr, tryCatch } from '../common/main.js';
 import EE from '../deps/events.js';
 import {
   connectWebSocket,
@@ -6,17 +6,19 @@ import {
 import commKeepAlive from '../common/commKeepAlive.js';
 
 let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
-  let cleanup = ({ err } = {}) => {
+  let cleanup = ({ err, dontSendCloseSignal } = {}) => {
     if (err) console.error(err);
-    commEE.removeAllListeners(`CONN_DATA:${connId}`);
-    commEE.removeAllListeners(`CONN_CLOSE:${connId}`);
-    commSock.send(encode(null, { headers: { connClose: true, connId } })).catch(e => e);
-    try { localConn?.close?.(); } catch {}
+    commEE.off(`CONN_DATA:${connId}`, connDataHandler);
+    commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
+    if (!dontSendCloseSignal) {
+      tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
+    }
+    tryCatch(() => localConn?.close?.());
   };
   let connDataHandler = bodyArr => {
     localConn.write(bodyArr).catch(err => cleanup({ err }));
   };
-  let connCloseHandler = () => cleanup();
+  let connCloseHandler = () => cleanup({ dontSendCloseSignal: true });
   let localConn;
 
   (async () => {
@@ -52,7 +54,8 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
       }
       if (headers.commConnInitFailed) {
         console.error(`forward failed localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
-        throw Error(headers.errMsg);
+        console.error(`remote host error: ${headers.errMsg}`);
+        throw Error('COMM_CONN_INIT_FAILED');
       }
       if (headers.newConn) {
         let { connId } = headers;
