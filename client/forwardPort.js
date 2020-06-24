@@ -6,7 +6,7 @@ import {
 import commKeepAlive from '../common/commKeepAlive.js';
 
 let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
-  let cleanup = ({ err } = {}) => {
+  let connCleanup = ({ err } = {}) => {
     if (err) console.error(err);
     commEE.off(`CONN_DATA:${connId}`, connDataHandler);
     commEE.off(`CONN_CLOSE:${connId}`, connCloseHandler);
@@ -14,10 +14,10 @@ let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
     tryCatch(() => localConn?.close?.());
   };
   let connDataHandler = bodyArr => {
-    localConn.write(bodyArr).catch(err => cleanup({ err }));
+    Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
   };
   let connCloseHandler = () => {
-    cleanup();
+    connCleanup();
   };
   let localConn;
 
@@ -30,7 +30,7 @@ let pipeNewConnection = ({ connId, localPort, commSock, commEE }) => {
     for await (let packet of localIter(localConn)) {
       await commSock.send(encode(packet, { headers: { connData: true, connId } }));
     }
-  })().catch(skipBadResourceErr).catch(console.error).finally(cleanup);
+  })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
 };
 
 export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elemti.com' }) => {

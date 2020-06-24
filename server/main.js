@@ -18,7 +18,7 @@ console.log(`commServer listening on ${bindAddr}`);
 
 let startPipeServer = async ({ publicPort, commSock, commEE }) => {
   let commClosed = false;
-  let cleanup = ({ err } = {}) => {
+  let pipeServerCleanup = ({ err } = {}) => {
     commClosed = true;
     if (err) console.error(err);
     try { pipeServer?.close?.(); } catch {}
@@ -35,7 +35,7 @@ let startPipeServer = async ({ publicPort, commSock, commEE }) => {
     };
 
     let connDataHandler = bodyArr => {
-      localConn.write(bodyArr).catch(err => connCleanup({ err }));
+      Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
     };
     let connCloseHandler = () => {
       connCleanup();
@@ -43,7 +43,7 @@ let startPipeServer = async ({ publicPort, commSock, commEE }) => {
 
     (async () => {
       await commSock.send(encode(null, { headers: { newConn: true, connId } }));
-      await pEvent(commEE, `CONN_READY:${connId}`, { timeout: 3*1000 });
+      await pEvent(commEE, `CONN_READY:${connId}`, { timeout: 3*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
       commEE.on(`CONN_DATA:${connId}`, connDataHandler);
       commEE.on(`CONN_CLOSE:${connId}`, connCloseHandler);
 
@@ -53,7 +53,7 @@ let startPipeServer = async ({ publicPort, commSock, commEE }) => {
     })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
   };
   
-  commEE.once('COMM_CONN_CLOSE', () => cleanup());
+  commEE.once('COMM_CONN_CLOSE', () => pipeServerCleanup());
   let pipeServer;
   try {
     if (publicPort) {
