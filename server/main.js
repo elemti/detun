@@ -8,8 +8,9 @@ import getFreePort, { isFreePort } from './getFreePort.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 import pEvent from '../deps/p-event.js';
 import EE from '../deps/events.js';
+import cliArgs from '../common/cli-args.js';
 
-let commPort = parseInt(Deno.args[0]) || 8080;
+let { verbose, _: [commPort = 8080] } = cliArgs;
 
 // let commServer = Deno.listen({ port: commPort });
 let bindAddr = `0.0.0.0:${commPort}`;
@@ -38,7 +39,7 @@ let onConnection = ({ localConn, commSock, onCleanup, connId }) => {
 
   (async () => {
     await commSock.send(encode(null, { headers: { newConn: true, connId } }));
-    await pEvent(connEE, 'CONN_READY', { timeout: 3*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
+    await pEvent(connEE, 'CONN_READY', { timeout: 5*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
 
     for await (let packet of localIter(localConn)) {
       await commSock.send(encode(packet, { headers: { connData: true, connId } }));
@@ -48,45 +49,48 @@ let onConnection = ({ localConn, commSock, onCleanup, connId }) => {
   return { onData, onClose, onReady };
 };
 
-let startPipeServer = async ({ publicPort }) => {
-  if (publicPort) {
-    let isFree = await isFreePort(publicPort);
-    if (!isFree) throw Error(`SELECTED_PORT_IS_BUSY: ${publicPort}`);
+let startPipeServer = async ({ port }) => {
+  if (port) {
+    let isFree = await isFreePort(port);
+    if (!isFree) throw Error(`SELECTED_PORT_IS_BUSY: ${port}`);
   } else {
-    publicPort = await getFreePort();
+    port = await getFreePort();
   }
-  let pipeServer = Deno.listen({ port: publicPort });
-  console.log('pipeServer created at port ' + publicPort);
-  return pipeServer;
+  let pipeServer = Deno.listen({ port });
+  console.log('pipeServer created at port ' + port);
+  return Object.assign(pipeServer, { pipeServerPort: port });
 };
 
 let handleWs = async commSock => {
   let { onSockEv } = commKeepAlive(commSock, () => pipeServerCleanup());
   let pipeServerCleanup = ({ err } = {}) => {
     if (err) console.error(err);
-    tryCatch(() => pipeServer?.close?.());
+    tryCatch(async () => {
+      await startingPipeServer.catch(e => e);
+      await pipeServer.close();
+    });
   };
+  let startingPipeServer = Promise.resolve();
   let pipeServer;
   let connections = {};
   for await (let ev of commSock) {
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      // console.log(decode(ev));
-      console.log(decode(ev).headers);
+      if (verbose) console.log(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInit) {
-        let { publicPort } = headers;
         try {
-          pipeServer = await startPipeServer({ publicPort });
+          startingPipeServer = startPipeServer({ port: headers.publicPort });
+          pipeServer = await startingPipeServer;
         } catch (err) {
           await commSock.send(encode(null, { headers: { commConnInitFailed: true, errMsg: err.message } }));
           await commSock.close();
           return;
         }
         (async () => {
-          await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort } }));
+          await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort: pipeServer.pipeServerPort } }));
           for await (let localConn of pipeServer) {
             let connId = nanoid();
             let onCleanup = () => { delete connections[connId] };

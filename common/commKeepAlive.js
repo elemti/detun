@@ -30,11 +30,11 @@ export default (commSock, onCleanup) => {
   }, PING_TIMEOUT);
 
   let onSockEv = ev => {
-    if (isWebSocketPingEvent(ev)) {
+    if (ev instanceof Uint8Array || isWebSocketPingEvent(ev)) {
       debouncedCleanup();
     }
     if (isWebSocketCloseEvent(ev)) {
-      debouncedCleanup.clear();
+      debouncedCleanup.cancel();
       cleanup();
       console.log('commSock closed');
     }

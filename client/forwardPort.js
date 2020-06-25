@@ -3,13 +3,19 @@ import {
   connectWebSocket,
 } from '../deps/ws.js';
 import commKeepAlive from '../common/commKeepAlive.js';
+import { parse } from '../deps/flags.js';
+
+let { verbose } = parse(Deno.args);
 
 let pipeNewConnection = ({ connId, localPort, commSock, onCleanup }) => {
   let connCleanup = ({ err } = {}) => {
     if (err) console.error(err);
     onCleanup?.();
     tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
-    tryCatch(() => localConn?.close?.());
+    tryCatch(async () => {
+      await startingLocalConn.catch(e => e);
+      await localConn.close();
+    });
   };
   let onData = async bodyArr => {
     await Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
@@ -18,9 +24,11 @@ let pipeNewConnection = ({ connId, localPort, commSock, onCleanup }) => {
     await connCleanup();
   };
   let localConn;
+  let startingLocalConn = Promise.resolve();
 
   (async () => {
-    localConn = await tcpConnect({ port: localPort });
+    startingLocalConn = tcpConnect({ port: localPort });
+    localConn = await startingLocalConn;
 
     await commSock.send(encode(null, { headers: { connReady: true, connId } }));
     for await (let packet of localIter(localConn)) {
@@ -43,8 +51,7 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      // console.log(decode(ev));
-      console.log(decode(ev).headers);
+      if (verbose) console.log(decode(ev).headers);
 
       let { headers, bodyArr } = decode(ev);
       if (headers.commConnInitDone) {

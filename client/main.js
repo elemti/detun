@@ -1,5 +1,7 @@
 import forwardPort from './forwardPort.js';
-import { parse } from '../deps/flags.js';
+import cliArgs from '../common/cli-args.js';
+
+let { publicPort, commPort, hostname, _: [localPort] } = cliArgs;
 
 // let forwardRetryLoop = async (...args) => {
 //   let retryInterv = 3 * 1000;
@@ -19,8 +21,7 @@ let validatePorts = ({ ...ports }) => {
 };
 
 (async () => {
-  let { localPort, publicPort, commPort, hostname } = parse(Deno.args);
-  validatePorts({ localPort, publicPort });
+  validatePorts({ localPort });
 
   await forwardPort({ localPort, publicPort, commPort, hostname });
 })();
