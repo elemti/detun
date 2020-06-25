@@ -35,7 +35,6 @@ export let decode = (fullArr = new Uint8Array(), { decodeBody = false } = {}) =>
 };
 
 export let localIter = reader => Deno.iter(reader, { bufSize: 32 * 1024 });
-export let commIter = reader => Deno.iter(reader, { bufSize: 64 * 1024 });
 
 export let tcpConnect = (...args) => new Promise((resolve, reject) => {
   let timeoutMs = 3*1000;

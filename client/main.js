@@ -3,16 +3,21 @@ import cliArgs from '../common/cli-args.js';
 
 let { publicPort, commPort, hostname, _: [localPort] } = cliArgs;
 
-// let forwardRetryLoop = async (...args) => {
-//   let retryInterv = 3 * 1000;
-//   try {
-//     await forwardPort(...args);
-//   } catch (err) {
-//     console.dir(err);
-//     console.log(`waiting ${retryInterv}ms to retry...`);
-//     setTimeout(() => forwardRetryLoop(...args), retryInterv);
-//   }
-// };
+let retryLoop = async func => {
+  let retryInterv = 3 * 1000;
+  while (true) {
+    try {
+      await func();
+      return;
+    } catch (err) {
+      console.error(err);
+      console.log();
+      console.log(`waiting ${retryInterv}ms to retry...`);
+      console.log();
+      await new Promise(res => setTimeout(res, retryInterv));
+    }
+  }
+};
 
 let validatePorts = ({ ...ports }) => {
   Object.entries(ports).forEach(([key, val]) => {
@@ -23,5 +28,7 @@ let validatePorts = ({ ...ports }) => {
 (async () => {
   validatePorts({ localPort });
 
-  await forwardPort({ localPort, publicPort, commPort, hostname });
+  await retryLoop(async () => {
+    await forwardPort({ localPort, publicPort, commPort, hostname });
+  });
 })();
