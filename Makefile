@@ -18,11 +18,11 @@ deploy-brook-sg: build
 
 .PHONY: dev-client
 dev-client:
-	deno run --allow-net client/main.js --localPort 3000 --publicPort 3001 --hostname localhost
+	deno run --allow-net client/main.js 3000 --publicPort 3001 --hostname localhost --verbose
 
 .PHONY: dev-server
 dev-server:
-	npx nodemon --exec "deno run --allow-net server/main.js"
+	npx nodemon --exec "deno run --allow-net server/main.js --verbose"
 
 .PHONY: test
 test:

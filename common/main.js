@@ -1,38 +1,38 @@
-let arrCast = payload => {
-  if (typeof payload === 'string') {
-    return new TextEncoder().encode(payload);
-  }
-  if (payload?.constructor === Uint8Array) {
-    return payload;
-  }
-  return new Uint8Array();
-};
+// let arrCast = payload => {
+//   if (typeof payload === 'string') {
+//     return new TextEncoder().encode(payload);
+//   }
+//   if (payload?.constructor === Uint8Array) {
+//     return payload;
+//   }
+//   return new Uint8Array();
+// };
 
-export let encode = (payload, { headers = {} } = {}) => {
-  if (headers?.constructor !== Object) throw Error('encode headers must be Object');
+// export let encode = (payload, { headers = {} } = {}) => {
+//   if (headers?.constructor !== Object) throw Error('encode headers must be Object');
 
-  let bodyArr = arrCast(payload);
-  let headerArr = arrCast(JSON.stringify(headers))
-    .map(it => it === 0 ? 32 : it); // convert null bytes to spaces
-  let fullArr = new Uint8Array([...headerArr, 0, ...bodyArr]);
-  return Object.assign(fullArr, { headers, headerArr, bodyArr, fullArr });
-};
+//   let bodyArr = arrCast(payload);
+//   let headerArr = arrCast(JSON.stringify(headers))
+//     .map(it => it === 0 ? 32 : it); // convert null bytes to spaces
+//   let fullArr = new Uint8Array([...headerArr, 0, ...bodyArr]);
+//   return Object.assign(fullArr, { headers, headerArr, bodyArr, fullArr });
+// };
 
-export let decode = (fullArr = new Uint8Array(), { decodeBody = false } = {}) => {
-  let decoder = new TextDecoder();
-  let nullByteIndex = fullArr.indexOf(0);
-  if (nullByteIndex === -1) {
-    throw Error('extractHeader: header not found!');
-  }
+// export let decode = (fullArr = new Uint8Array(), { decodeBody = false } = {}) => {
+//   let decoder = new TextDecoder();
+//   let nullByteIndex = fullArr.indexOf(0);
+//   if (nullByteIndex === -1) {
+//     throw Error('extractHeader: header not found!');
+//   }
   
-  let headerArr = fullArr.subarray(0, nullByteIndex);
-  let headers = JSON.parse(decoder.decode(headerArr));
-  if (headers?.constructor !== Object) throw Error('decode malformed headers');
+//   let headerArr = fullArr.subarray(0, nullByteIndex);
+//   let headers = JSON.parse(decoder.decode(headerArr));
+//   if (headers?.constructor !== Object) throw Error('decode malformed headers');
 
-  let bodyArr = fullArr.subarray(nullByteIndex + 1);
-  let bodyText = decodeBody ? decoder.decode(bodyArr) : undefined;
-  return { headers, headerArr, bodyText, bodyArr };
-};
+//   let bodyArr = fullArr.subarray(nullByteIndex + 1);
+//   let bodyText = decodeBody ? decoder.decode(bodyArr) : undefined;
+//   return { headers, headerArr, bodyText, bodyArr };
+// };
 
 export let localIter = reader => Deno.iter(reader, { bufSize: 32 * 1024 });
 

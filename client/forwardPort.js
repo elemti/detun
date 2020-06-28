@@ -1,4 +1,5 @@
-import { encode, decode, localIter, tcpConnect, skipBadResourceErr, tryCatch } from '../common/main.js';
+import { localIter, tcpConnect, skipBadResourceErr, tryCatch } from '../common/main.js';
+import { encode123, decode123 } from '../common/crypt.js';
 import {
   connectWebSocket,
 } from '../deps/ws.js';
@@ -11,7 +12,7 @@ let pipeNewConnection = ({ connId, localPort, commSock, onCleanup }) => {
   let connCleanup = ({ err } = {}) => {
     if (err) console.error(err);
     onCleanup?.();
-    tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
+    tryCatch(() => commSock.send(encode123({ connClose: true, connId })));
     tryCatch(async () => {
       await startingLocalConn.catch(e => e);
       await localConn.close();
@@ -30,9 +31,9 @@ let pipeNewConnection = ({ connId, localPort, commSock, onCleanup }) => {
     startingLocalConn = tcpConnect({ port: localPort });
     localConn = await startingLocalConn;
 
-    await commSock.send(encode(null, { headers: { connReady: true, connId } }));
+    await commSock.send(encode123({ connReady: true, connId }));
     for await (let packet of localIter(localConn)) {
-      await commSock.send(encode(packet, { headers: { connData: true, connId } }));
+      await commSock.send(encode123({ packet, connData: true, connId }));
     }
   })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
 
@@ -43,7 +44,7 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
   let commSock = await connectWebSocket(`ws://${hostname}:${commPort}`);
   console.log('connected to commServer');
 
-  await commSock.send(encode(null, { headers: { commConnInit: true, publicPort } }));
+  await commSock.send(encode123({ commConnInit: true, publicPort }));
 
   let connections = {};
   let { onSockEv } = commKeepAlive(commSock);
@@ -51,26 +52,26 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      if (verbose) console.log(decode(ev).headers);
+      let payload = decode123(ev);
+      if (verbose) console.log(payload);
 
-      let { headers, bodyArr } = decode(ev);
-      if (headers.commConnInitDone) {
-        console.log(`forwarding localhost:${localPort} -> ${hostname}:${headers.publicPort}`);
+      if (payload.commConnInitDone) {
+        console.log(`forwarding localhost:${localPort} -> ${hostname}:${payload.publicPort}`);
       }
-      if (headers.commConnInitFailed) {
-        console.error(`remote host error: ${headers.errMsg}`);
+      if (payload.commConnInitFailed) {
+        console.error(`remote host error: ${payload.errMsg}`);
         throw Error('COMM_CONN_INIT_FAILED');
       }
-      if (headers.newConn) {
-        let { connId } = headers;
+      if (payload.newConn) {
+        let { connId } = payload;
         let onCleanup = () => { delete connections[connId] };
         connections[connId] = pipeNewConnection({ connId, localPort, commSock, onCleanup });
       }
-      if (headers.connData) {
-        await connections[headers.connId]?.onData(bodyArr).catch(console.error);
+      if (payload.connData) {
+        await connections[payload.connId]?.onData(payload.packet).catch(console.error);
       }
-      if (headers.connClose) {
-        await connections[headers.connId]?.onClose().catch(console.error);
+      if (payload.connClose) {
+        await connections[payload.connId]?.onClose().catch(console.error);
       }
     }
   }

@@ -1,6 +1,7 @@
 import { serve } from '../deps/http.js';
 import { nanoid } from '../deps/nanoid.js';
-import { encode, decode, localIter, skipBadResourceErr, tryCatch } from '../common/main.js';
+import { localIter, skipBadResourceErr, tryCatch } from '../common/main.js';
+import { encode123, decode123 } from '../common/crypt.js';
 import {
   acceptWebSocket,
 } from '../deps/ws.js';
@@ -23,7 +24,7 @@ let onConnection = ({ localConn, commSock, onCleanup, connId }) => {
     if (err) console.error(err);
     onCleanup?.();
     connEE.removeAllListeners();
-    tryCatch(() => commSock.send(encode(null, { headers: { connClose: true, connId } })));
+    tryCatch(() => commSock.send(encode123({ connClose: true, connId })));
     tryCatch(() => localConn.close());
   };
 
@@ -38,11 +39,11 @@ let onConnection = ({ localConn, commSock, onCleanup, connId }) => {
   };
 
   (async () => {
-    await commSock.send(encode(null, { headers: { newConn: true, connId } }));
+    await commSock.send(encode123({ newConn: true, connId }));
     await pEvent(connEE, 'CONN_READY', { timeout: 5*1000 }).catch(() => { throw Error('CONN_READY_TIMED_OUT'); });
 
     for await (let packet of localIter(localConn)) {
-      await commSock.send(encode(packet, { headers: { connData: true, connId } }));
+      await commSock.send(encode123({ packet, connData: true, connId }));
     }
   })().catch(skipBadResourceErr).catch(console.error).finally(connCleanup);
 
@@ -77,20 +78,20 @@ let handleWs = async commSock => {
     onSockEv(ev);
     
     if (ev instanceof Uint8Array) {
-      if (verbose) console.log(decode(ev).headers);
+      let payload = decode123(ev);
+      if (verbose) console.log(payload);
 
-      let { headers, bodyArr } = decode(ev);
-      if (headers.commConnInit) {
+      if (payload.commConnInit) {
         try {
-          startingPipeServer = startPipeServer({ port: headers.publicPort });
+          startingPipeServer = startPipeServer({ port: payload.publicPort });
           pipeServer = await startingPipeServer;
         } catch (err) {
-          await commSock.send(encode(null, { headers: { commConnInitFailed: true, errMsg: err.message } }));
+          await commSock.send(encode123({ commConnInitFailed: true, errMsg: err.message }));
           await commSock.close();
           return;
         }
         (async () => {
-          await commSock.send(encode(null, { headers: { commConnInitDone: true, publicPort: pipeServer.pipeServerPort } }));
+          await commSock.send(encode123({ commConnInitDone: true, publicPort: pipeServer.pipeServerPort }));
           for await (let localConn of pipeServer) {
             let connId = nanoid();
             let onCleanup = () => { delete connections[connId] };
@@ -98,14 +99,14 @@ let handleWs = async commSock => {
           }
         })().catch(console.error);
       }
-      if (headers.connReady) {
-        await connections[headers.connId]?.onReady().catch(console.error);
+      if (payload.connReady) {
+        await connections[payload.connId]?.onReady().catch(console.error);
       }
-      if (headers.connData) {
-        await connections[headers.connId]?.onData(bodyArr).catch(console.error);
+      if (payload.connData) {
+        await connections[payload.connId]?.onData(payload.packet).catch(console.error);
       }
-      if (headers.connClose) {
-        await connections[headers.connId]?.onClose().catch(console.error);
+      if (payload.connClose) {
+        await connections[payload.connId]?.onClose().catch(console.error);
       }
     }
   }
