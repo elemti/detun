@@ -34,14 +34,18 @@ export default (commSock, onCleanup) => {
       debouncedCleanup();
     }
     if (isWebSocketCloseEvent(ev)) {
-      debouncedCleanup.cancel();
-      cleanup();
-      console.log('commSock closed');
+      onSockEnd();
     }
+  };
+
+  let onSockEnd = () => {
+    debouncedCleanup.cancel();
+    cleanup();
+    console.log('commSock closed');
   };
 
   pingLoop(commSock);
   debouncedCleanup();
 
-  return { onSockEv };
+  return { onSockEv, onSockEnd };
 };

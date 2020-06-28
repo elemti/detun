@@ -47,32 +47,36 @@ export default async ({ localPort, publicPort, commPort = 8080, hostname = 'elem
   await commSock.send(encode123({ commConnInit: true, publicPort }));
 
   let connections = {};
-  let { onSockEv } = commKeepAlive(commSock);
-  for await (let ev of commSock) {
-    onSockEv(ev);
-    
-    if (ev instanceof Uint8Array) {
-      let payload = decode123(ev);
-      if (verbose) console.log(payload);
+  let { onSockEv, onSockEnd } = commKeepAlive(commSock);
+  try {
+    for await (let ev of commSock) {
+      onSockEv(ev);
+      
+      if (ev instanceof Uint8Array) {
+        let payload = decode123(ev);
+        if (verbose) console.log(payload);
 
-      if (payload.commConnInitDone) {
-        console.log(`forwarding localhost:${localPort} -> ${hostname}:${payload.publicPort}`);
-      }
-      if (payload.commConnInitFailed) {
-        console.error(`remote host error: ${payload.errMsg}`);
-        throw Error('COMM_CONN_INIT_FAILED');
-      }
-      if (payload.newConn) {
-        let { connId } = payload;
-        let onCleanup = () => { delete connections[connId] };
-        connections[connId] = pipeNewConnection({ connId, localPort, commSock, onCleanup });
-      }
-      if (payload.connData) {
-        await connections[payload.connId]?.onData(payload.packet).catch(console.error);
-      }
-      if (payload.connClose) {
-        await connections[payload.connId]?.onClose().catch(console.error);
+        if (payload.commConnInitDone) {
+          console.log(`forwarding localhost:${localPort} -> ${hostname}:${payload.publicPort}`);
+        }
+        if (payload.commConnInitFailed) {
+          console.error(`remote host error: ${payload.errMsg}`);
+          throw Error('COMM_CONN_INIT_FAILED');
+        }
+        if (payload.newConn) {
+          let { connId } = payload;
+          let onCleanup = () => { delete connections[connId] };
+          connections[connId] = pipeNewConnection({ connId, localPort, commSock, onCleanup });
+        }
+        if (payload.connData) {
+          await connections[payload.connId]?.onData(payload.packet).catch(console.error);
+        }
+        if (payload.connClose) {
+          await connections[payload.connId]?.onClose().catch(console.error);
+        }
       }
     }
+  } finally {
+    onSockEnd();
   }
 };
