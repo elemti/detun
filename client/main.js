@@ -8,9 +8,9 @@ let retryLoop = async func => {
   while (true) {
     try {
       await func();
-      return;
     } catch (err) {
       console.error(err);
+    } finally {
       console.log();
       console.log(`waiting ${retryInterv}ms to retry...`);
       console.log();
