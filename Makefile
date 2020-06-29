@@ -14,7 +14,7 @@ clean:
 
 .PHONY: deploy-brook-sg
 deploy-brook-sg: build
-	scp $(SERVER) brook-sg:
+	scp $(SERVER) $(CLIENT) brook-sg:
 	ssh brook-sg "\
 		pm2 -s delete detun-server; \
 		pm2 -s start --time --name detun-server deno -- run --allow-net detun-server.js && \
