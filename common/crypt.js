@@ -1,6 +1,6 @@
 import sjcl from 'https://dev.jspm.io/sjcl';
 
-let SECRET = Deno.env.get('DETUN_SECRET');
+let SECRET = Deno.env.get('DETUN_SECRET')?.trim();
 if (!SECRET) throw Error('DETUN_SECRET env is empty!');
 
 export let encrypt = jsonType => sjcl.encrypt(SECRET, JSON.stringify(jsonType)); // can be string, number, object, array, null
