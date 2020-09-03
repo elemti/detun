@@ -1,1 +1,1 @@
-export { default } from 'https://deno.land/x/lodash/debounce.js';
+export { default } from 'https://raw.githubusercontent.com/lodash/lodash/4.17.15-es/debounce.js';
