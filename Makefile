@@ -14,10 +14,11 @@ clean:
 
 .PHONY: deploy
 deploy: build
-	rm -rf $(DEPLOY_TMP_DIR)
+	rm -vrf $(DEPLOY_TMP_DIR)
 	mkdir -p $(DEPLOY_TMP_DIR)
 	git clone https://github.com/elemti/detun --depth 1 --branch release $(DEPLOY_TMP_DIR)
 	rsync -avz --delete --cvs-exclude build/ $(DEPLOY_TMP_DIR)
+	cd $(DEPLOY_TMP_DIR)
 	git add .
 	git commit -m 'make deploy'
 	git push
