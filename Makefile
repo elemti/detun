@@ -25,17 +25,17 @@ deploy-brook-sg: build
 	scp $(SERVER) $(CLIENT) brook-sg:
 	ssh brook-sg "\
 		pm2 -s delete detun-server; \
-		pm2 -s start --time --name detun-server deno -- run --allow-net detun-server.js && \
+		pm2 -s start --time --name detun-server deno -- run --allow-all detun-server.js && \
 		pm2 -s save \
 	"
 
 .PHONY: dev-client
 dev-client:
-	deno run --allow-net client/main.js 3000 --publicPort 3001 --hostname localhost --verbose
+	deno run --allow-all client/main.js 3000 --publicPort 3001 --hostname localhost --verbose
 
 .PHONY: dev-server
 dev-server:
-	npx nodemon --exec "deno run --allow-net server/main.js --verbose"
+	npx nodemon --exec "deno run --allow-all server/main.js --verbose"
 
 .PHONY: test
 test:
