@@ -13152,7 +13152,9 @@ System.register("file:///home/elemti/nux/git/detun/common/crypt", ["https://dev.
             }
         ],
         execute: function () {
-            SECRET = 'aPkbYv9n6HyJfd6Rjngv7y337Etc4dXQtqbRMwZK9yhdpkZPCDRG3EPETaeGGNbvzBkRA5YHeSkhtJxZDPbNJSURFsf2AsCNGQj';
+            SECRET = Deno.env.get('DETUN_SECRET');
+            if (!SECRET)
+                throw Error('DETUN_SECRET env is empty!');
             exports_37("encrypt", encrypt = jsonType => sjcl_1.default.encrypt(SECRET, JSON.stringify(jsonType)));
             exports_37("decrypt", decrypt = encrypted => JSON.parse(sjcl_1.default.decrypt(SECRET, encrypted)));
             exports_37("timelyEncrypt", timelyEncrypt = (payload, ttl = 3) => encrypt({ exp: Date.now() + ttl * 1000, payload }));
