@@ -1,0 +1,20 @@
+{
+  "name": "@elemti/detun",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "postinstall": "./postinstall.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elemti/detun.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/elemti/detun/issues"
+  },
+  "homepage": "https://github.com/elemti/detun#readme",
+  "devDependencies": {}
+}

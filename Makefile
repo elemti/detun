@@ -12,6 +12,11 @@ clean:
 	rm -vrf build
 	mkdir -p build
 
+.PHONY: publish-npm
+publish-npm: build
+	cp -R build/ npm-pkg/
+	cd npm-pkg && npm publish --access public
+
 .PHONY: deploy
 deploy: build
 	rm -vrf $(DEPLOY_TMP_DIR)
