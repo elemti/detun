@@ -1,9 +1,12 @@
 let cp = require('child_process');
 
-let command = cmd => cp.execSync(cmd, {
+let commandSync = cmd => cp.execSync(cmd, {
   cwd: __dirname,
   stdio: 'inherit',
 });
 
-command(`deno install -Af ./build/detun.js`);
-command(`deno install -Af ./build/detun-server.js`);
+commandSync(`gzip -cd ./deno.gz > ./deno && chmod +x ./deno`);
+commandSync(`./deno install -Af ./build/detun.js`);
+commandSync(`./deno install -Af ./build/detun-server.js`);
+commandSync(`rm ./deno`);
+commandSync(`bash ./deno-install.sh`);
