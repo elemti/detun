@@ -15,7 +15,7 @@ clean:
 .PHONY: publish-npm
 publish-npm: build
 	cp -R build/ npm-pkg/
-	cd npm-pkg && npm publish --access public
+	cd npm-pkg && npm publish
 
 .PHONY: deploy
 deploy: build

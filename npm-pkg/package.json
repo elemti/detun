@@ -1,15 +1,17 @@
 {
   "name": "@elemti/detun",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "description": "",
   "scripts": {
-    "prepublish": "node ./scripts/prepublish.js",
     "postinstall": "node ./scripts/postinstall.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elemti/detun.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "/build",
