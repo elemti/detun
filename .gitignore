@@ -115,8 +115,6 @@ dist
 .yarn/build-state.yml
 .pnp.*
 
-
-!/node_modules
-/package.json
-/package-lock.json
-build/
+/build/
+/npm-pkg/build/
+/test/
