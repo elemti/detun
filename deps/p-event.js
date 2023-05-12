@@ -1,1 +1,3 @@
-export { default } from 'https://dev.jspm.io/p-event';
+import { pEvent } from "npm:p-event";
+
+export default pEvent;

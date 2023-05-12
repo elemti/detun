@@ -5,6 +5,7 @@ import {
 } from '../deps/ws.js';
 import commKeepAlive from '../common/commKeepAlive.js';
 import { parse } from '../deps/flags.js';
+import { writeAll } from '../deps/write_all.js';
 
 let { verbose } = parse(Deno.args);
 
@@ -18,7 +19,7 @@ let pipeNewConnection = ({ localPort, onCleanup, onReady, onPacket }) => {
     });
   };
   let onData = async bodyArr => {
-    await Deno.writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
+    await writeAll(localConn, bodyArr).catch(err => connCleanup({ err }));
   };
   let onClose = async () => {
     await connCleanup();
